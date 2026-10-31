@@ -129,6 +129,7 @@ svg.chart{width:100%;height:auto;display:block}
     <button class="btn sec" id="btnBack">뒤로</button>
     <button class="btn sec" id="btnFlip">카메라 전환</button>
     <button class="btn sec" id="btnSound">소리 켜짐</button>
+    <button class="btn sec" id="btnSnd">소리 확인</button>
     <button class="btn sec" id="btnAuto">자동 시작 켜짐</button>
     <button class="btn sec" id="btnWide">화각: 넓게</button>
     <button class="btn sec" id="btnView">촬영: 자동</button>
@@ -386,7 +387,7 @@ if (typeof module !== 'undefined') module.exports = { ENGINE_VERSION, DEFAULT_CO
 // ===================== 앱 =====================
 const MP_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.0';
 const mpModelUrl = (name, ver) => 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_' + name + '/float16/' + ver + '/pose_landmarker_' + name + '.task';
-const APP_VER = '0.7';
+const APP_VER = '0.8';
 const TEST_SEC = 60, CD_SEC = 3, KEY_REC = 'burpeeTest.v1', KEY_CFG = 'burpeeTest.cfg', KEY_COND = 'burpeeTest.cond', KEY_CAM = 'burpeeTest.cam', KEY_AUTO = 'burpeeTest.auto', KEY_WIDE = 'burpeeTest.wide', KEY_VIEW = 'burpeeTest.view', AUTO_HOLD_MS = 2000;
 const COND = { before: '루틴 전', after: '루틴 후', rest: '휴식일' };
 const CONN = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28],[27,29],[29,31],[28,30],[30,32]];
@@ -419,7 +420,16 @@ function show(id) {
 }
 
 // ---- 소리 ----
-function audioInit() { try { if (!S.audio) S.audio = new (window.AudioContext || window.webkitAudioContext)(); if (S.audio.state === 'suspended') S.audio.resume(); } catch (e) {} }
+function audioInit() {
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}   // 아이폰 무음 스위치가 켜져 있어도 소리 재생
+  try {
+    if (!S.audio) S.audio = new (window.AudioContext || window.webkitAudioContext)();
+    if (S.audio.state !== 'running') S.audio.resume();
+    const b = S.audio.createBuffer(1, 1, 22050), s = S.audio.createBufferSource();   // 무음 한 조각으로 오디오 잠금 해제
+    s.buffer = b; s.connect(S.audio.destination); s.start(0);
+  } catch (e) {}
+}
+document.addEventListener('click', () => { try { if (S.audio && S.audio.state !== 'running') S.audio.resume(); } catch (e) {} }, true);
 function beep(freq, ms, vol) {
   if (!S.sound || !S.audio) return;
   try {
@@ -434,17 +444,11 @@ const SND_RECOG = [[880, 0, 100], [1175, 130, 180]];                            
 const SND_TICK = [[1000, 0, 190]];                                                     // 3, 2, 1 (띠)
 const SND_GO = [[1568, 0, 600]];                                                       // 시작 (띠이~)
 const SND_END = [[1175, 0, 170], [988, 230, 170], [784, 460, 170], [523, 690, 600]];   // 종료 (띠띠띠 띠~)
+// 예약 방식(오디오 시계 기준) 대신, 확실히 소리가 나는 즉시 재생 방식(beep)을 타이머로 이어 붙인다
 function tones(seq, vol) {
   if (!S.sound || !S.audio) return;
-  try {
-    const t0 = S.audio.currentTime;
-    for (const [f, at, d] of seq) {
-      const o = S.audio.createOscillator(), g = S.audio.createGain(), s = t0 + at / 1000, e = s + d / 1000;
-      o.type = 'sine'; o.frequency.value = f;
-      g.gain.setValueAtTime(vol || 0.3, s); g.gain.exponentialRampToValueAtTime(0.001, e);
-      o.connect(g); g.connect(S.audio.destination); o.start(s); o.stop(e + 0.02);
-    }
-  } catch (e) {}
+  try { if (S.audio.state !== 'running') S.audio.resume(); } catch (e) {}   // 중단·일시정지 상태면 되살림
+  for (const [f, at, d] of seq) setTimeout(() => beep(f, d, vol || 0.3), at);
 }
 // ---- 화면 꺼짐 방지 ----
 async function wakeOn() { try { if (navigator.wakeLock) S.wake = await navigator.wakeLock.request('screen'); } catch (e) {} }
@@ -686,7 +690,12 @@ function tickRun(now, m) {
 function finish(completed) {
   if (S.phase !== 'run') return;
   const count = S.counter.count, invalid = S.counter.invalid;
-  exitCamera(); tones(SND_END); setTimeout(() => speak('끝. ' + count + '회'), 1500);
+  // iOS는 카메라를 끄는 순간 오디오가 끊길 수 있어, 종료음을 먼저 내고 소리가 끝난 뒤에 카메라를 끈다
+  S.loop = false; S.phase = 'done';
+  tones(SND_END, 0.4);
+  const st = S.stream;
+  setTimeout(() => { if (S.stream === st) { stopCamera(); wakeOff(); } }, 2400);   // 그 사이 '다시 측정'으로 새 스트림이 열렸으면 건드리지 않음
+  setTimeout(() => speak('끝. ' + count + '회'), 1500);
   S.result = { autoCount: count, finalCount: count, invalid, completed, startedAt: S.startedAt, source: 'camera', condition: lsGet(KEY_COND) || 'before' };
   renderResult(); show('result');
 }
@@ -769,7 +778,7 @@ function buildDebug() {
 function updateDebug(m) {
   const el = $('#dbgLive'); if (!el) return;
   const sm = S.counter.smoothed;
-  el.textContent = 'v' + APP_VER + ' ' + (S.view === 'front' ? '정면' : '측면') + ' ' + (S.modelInfo || '') + ' | ' + (S.camLabel || '') + ' ' + vid.videoWidth + 'x' + vid.videoHeight + ' | fps ' + S.fps + ' | 상태 ' + S.counter.state + ' | 횟수 ' + S.counter.count + ' | 무효 ' + S.counter.invalid + '\n' +
+  el.textContent = 'v' + APP_VER + ' 오디오:' + (S.audio ? S.audio.state : '없음') + ' ' + (S.view === 'front' ? '정면' : '측면') + ' ' + (S.modelInfo || '') + ' | ' + (S.camLabel || '') + ' ' + vid.videoWidth + 'x' + vid.videoHeight + ' | fps ' + S.fps + ' | 상태 ' + S.counter.state + ' | 횟수 ' + S.counter.count + ' | 무효 ' + S.counter.invalid + '\n' +
     (m.ok ? '쪽 ' + m.side + ' | 무릎 ' + m.knee.toFixed(0) + '° | 기울기 ' + m.tilt.toFixed(0) + '°' + (sm ? ' (평활 ' + sm.knee.toFixed(0) + '/' + sm.tilt.toFixed(0) + ')' : '') : '인식 안 됨(' + m.reason + ')');
   el.style.whiteSpace = 'pre';
 }
@@ -781,6 +790,11 @@ $('#btnManual').onclick = () => { $('#mCond').value = lsGet(KEY_COND) || 'before
 $('#btnBack').onclick = () => { exitCamera(); show('intro'); };
 $('#btnGo').onclick = startCountdown;
 $('#btnStop').onclick = () => { if (S.phase === 'countdown') { setAuto(false); cancelCountdown(); } else finish(false); };
+$('#btnSnd').onclick = () => {   // 인식음 → 띠·띠·띠 → 시작음 → 종료음을 차례로 들려 줌
+  S.sound = true; $('#btnSound').textContent = '소리 켜짐'; audioInit();
+  tones(SND_RECOG); [900, 1800, 2700].forEach(t => setTimeout(() => tones(SND_TICK), t)); setTimeout(() => tones(SND_GO), 3700); setTimeout(() => tones(SND_END), 4900);
+  setChip('소리 확인 중: 인식음 → 띠 띠 띠 → 시작음 → 종료음');
+};
 $('#btnAuto').onclick = () => setAuto(!S.autoStart);
 setAuto(S.autoStart);
 function setWide(on) { S.wide = on; lsSet(KEY_WIDE, on ? '1' : '0'); $('#btnWide').textContent = on ? '화각: 넓게' : '화각: 기본'; }
