@@ -103,6 +103,7 @@ svg.chart{width:100%;height:auto;display:block}
     <button class="btn sec" id="btnHist">기록 보기</button>
     <button class="btn sec" id="btnManual">직접 입력</button>
   </div>
+  <p class="notice" id="ver" style="text-align:center;margin-top:16px"></p>
 </section>
 
 <!-- 카메라 / 측정 -->
@@ -339,7 +340,8 @@ if (typeof module !== 'undefined') module.exports = { ENGINE_VERSION, DEFAULT_CO
 
 // ===================== 앱 =====================
 const MP_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.0';
-const MP_MODEL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task';
+const mpModelUrl = (name, ver) => 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_' + name + '/float16/' + ver + '/pose_landmarker_' + name + '.task';
+const APP_VER = '0.3';
 const TEST_SEC = 60, CD_SEC = 5, KEY_REC = 'burpeeTest.v1', KEY_CFG = 'burpeeTest.cfg', KEY_COND = 'burpeeTest.cond';
 const COND = { before: '루틴 전', after: '루틴 후', rest: '휴식일' };
 const CONN = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28],[27,29],[29,31],[28,30],[30,32]];
@@ -354,6 +356,7 @@ function loadRecords() { try { const a = JSON.parse(lsGet(KEY_REC) || '[]'); ret
 function saveRecords(a) { lsSet(KEY_REC, JSON.stringify(a)); }
 function loadCfg() { try { return JSON.parse(lsGet(KEY_CFG) || '{}') || {}; } catch (e) { return {}; } }
 
+$('#ver').textContent = '버전 ' + APP_VER;
 // ---- 상태 ----
 const S = { facing: 'user', stream: null, provider: null, counter: null, phase: 'idle', loop: false, lastTs: 0,
   readySince: 0, ready: false, sound: true, debug: false, fps: 0, fpsN: 0, fpsT: 0, runStart: 0, cdStart: 0, lastCd: 0,
@@ -406,21 +409,28 @@ document.addEventListener('visibilitychange', () => {
 })();
 
 // ---- 자세 인식 모델 ----
+function errText(e) { const s = (e && (e.name ? e.name + ': ' : '') + (e.message || e)) || String(e); return String(s).slice(0, 180); }
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 async function loadProvider() {
   if (window.__poseProviderOverride) return window.__poseProviderOverride; // 테스트용 주입
-  const mod = await import(MP_BASE + '/vision_bundle.mjs');
-  const fileset = await mod.FilesetResolver.forVisionTasks(MP_BASE + '/wasm');
-  let lmk;
-  for (const delegate of ['GPU', 'CPU']) {
+  const log = [];
+  let mod;
+  try { mod = await import(MP_BASE + '/vision_bundle.mjs'); }
+  catch (e) { const er = new Error('라이브러리 로드 실패 - ' + errText(e)); throw er; }
+  // 실패하면 다음 조합으로: 전체+GPU → 전체+CPU → 가벼운 모델+CPU → 예전 주소(/1/)
+  for (const [mname, ver, delegate] of [['full', 'latest', 'GPU'], ['full', 'latest', 'CPU'], ['lite', 'latest', 'CPU'], ['full', '1', 'CPU'], ['lite', '1', 'CPU']]) {
     try {
-      lmk = await mod.PoseLandmarker.createFromOptions(fileset, {
-        baseOptions: { modelAssetPath: MP_MODEL, delegate }, runningMode: 'VIDEO', numPoses: 1,
+      setChip('자세 인식 모델 불러오는 중… (' + mname + ' ' + delegate + ')');
+      const fileset = await mod.FilesetResolver.forVisionTasks(MP_BASE + '/wasm');
+      const lmk = await mod.PoseLandmarker.createFromOptions(fileset, {
+        baseOptions: { modelAssetPath: mpModelUrl(mname, ver), delegate }, runningMode: 'VIDEO', numPoses: 1,
         minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.5
       });
-      break;
-    } catch (e) { if (delegate === 'CPU') throw e; }
+      S.modelInfo = mname + '/' + ver + '/' + delegate;
+      return { detect(video, ts) { const r = lmk.detectForVideo(video, ts); return (r && r.landmarks && r.landmarks[0]) || null; } };
+    } catch (e) { log.push(mname + '/' + ver + '·' + delegate + ' → ' + errText(e).replace('Failed to fetch model: https://storage.googleapis.com/mediapipe-models/pose_landmarker/', '모델 받기 실패: ')); }
   }
-  return { detect(video, ts) { const r = lmk.detectForVideo(video, ts); return (r && r.landmarks && r.landmarks[0]) || null; } };
+  throw new Error(log.join(' | '));
 }
 
 // ---- 카메라 ----
@@ -449,7 +459,7 @@ async function enterCamera() {
   catch (e) { return leaveWithError(camErrorText(e)); }
   setChip('자세 인식 모델 불러오는 중… (처음에는 몇 초 걸려요)');
   try { S.provider = S.provider || await loadProvider(); }
-  catch (e) { return leaveWithError('자세 인식 모델을 불러오지 못했어요. 인터넷 연결을 확인하고 다시 시도하세요. 계속 안 되면 <b>직접 입력</b>을 쓸 수 있어요.'); }
+  catch (e) { return leaveWithError('자세 인식 모델을 불러오지 못했어요. 인터넷 연결을 확인하고 다시 시도하세요. 계속 안 되면 <b>직접 입력</b>을 쓸 수 있어요.<br><small style="word-break:break-all;opacity:.75">원인: ' + esc(e && e.message || e) + '</small>'); }
   S.counter = createCounter(loadCfg());
   S.phase = 'setup'; S.ready = false; S.readySince = 0;
   $('#guide').classList.add('on');
@@ -635,7 +645,7 @@ function buildDebug() {
 function updateDebug(m) {
   const el = $('#dbgLive'); if (!el) return;
   const sm = S.counter.smoothed;
-  el.textContent = 'fps ' + S.fps + ' | 상태 ' + S.counter.state + ' | 횟수 ' + S.counter.count + ' | 무효 ' + S.counter.invalid + '\n' +
+  el.textContent = 'v' + APP_VER + ' ' + (S.modelInfo || '') + ' | fps ' + S.fps + ' | 상태 ' + S.counter.state + ' | 횟수 ' + S.counter.count + ' | 무효 ' + S.counter.invalid + '\n' +
     (m.ok ? '쪽 ' + m.side + ' | 무릎 ' + m.knee.toFixed(0) + '° | 기울기 ' + m.tilt.toFixed(0) + '°' + (sm ? ' (평활 ' + sm.knee.toFixed(0) + '/' + sm.tilt.toFixed(0) + ')' : '') : '인식 안 됨(' + m.reason + ')');
   el.style.whiteSpace = 'pre';
 }
