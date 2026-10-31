@@ -88,8 +88,9 @@ svg.chart{width:100%;height:auto;display:block}
 
   <h2>촬영 방법</h2>
   <div class="card notice">
-    <b>폰을 가로로</b> 세워 두고, 몸의 <b>옆모습</b>이 보이게 서세요.<br>
-    머리부터 발끝까지 보이도록 <b>2~3m</b> 떨어지세요.<br>
+    폰을 세워 두고(<b>가로 권장</b>), 몸의 <b>옆모습</b>이 보이게 서세요.<br>
+    머리부터 발끝까지 보이도록 떨어지세요. 보통 <b>2~3m</b>이고, 후면 <b>초광각</b> 카메라를 고르면 더 가까워도 돼요.<br>
+    혼자 할 때는 서 있는 자세를 <b>2초 유지</b>하면 <b>자동으로 시작</b>해요. 소리와 음성으로 알려 줘요.<br>
     같은 요일·시간대, <b>루틴 전</b>에 재면 비교가 정확해요. 주 1회를 권장해요.
   </div>
   <div class="card notice">
@@ -128,6 +129,8 @@ svg.chart{width:100%;height:auto;display:block}
     <button class="btn sec" id="btnBack">뒤로</button>
     <button class="btn sec" id="btnFlip">카메라 전환</button>
     <button class="btn sec" id="btnSound">소리 켜짐</button>
+    <button class="btn sec" id="btnAuto">자동 시작 켜짐</button>
+    <button class="btn sec" id="btnWide">화각: 넓게</button>
     <button class="btn sec" id="btnDbg">진단</button>
     <button class="btn" id="btnGo" disabled>시작</button>
   </div>
@@ -341,8 +344,8 @@ if (typeof module !== 'undefined') module.exports = { ENGINE_VERSION, DEFAULT_CO
 // ===================== 앱 =====================
 const MP_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.0';
 const mpModelUrl = (name, ver) => 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_' + name + '/float16/' + ver + '/pose_landmarker_' + name + '.task';
-const APP_VER = '0.4';
-const TEST_SEC = 60, CD_SEC = 5, KEY_REC = 'burpeeTest.v1', KEY_CFG = 'burpeeTest.cfg', KEY_COND = 'burpeeTest.cond';
+const APP_VER = '0.6';
+const TEST_SEC = 60, CD_SEC = 3, KEY_REC = 'burpeeTest.v1', KEY_CFG = 'burpeeTest.cfg', KEY_COND = 'burpeeTest.cond', KEY_CAM = 'burpeeTest.cam', KEY_AUTO = 'burpeeTest.auto', KEY_WIDE = 'burpeeTest.wide', AUTO_HOLD_MS = 2000;
 const COND = { before: '루틴 전', after: '루틴 후', rest: '휴식일' };
 const CONN = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28],[27,29],[29,31],[28,30],[30,32]];
 const $ = (s) => document.querySelector(s);
@@ -360,7 +363,10 @@ $('#ver').textContent = '버전 ' + APP_VER;
 // ---- 상태 ----
 const S = { facing: 'user', stream: null, provider: null, counter: null, phase: 'idle', loop: false, lastTs: 0,
   readySince: 0, ready: false, sound: true, debug: false, fps: 0, fpsN: 0, fpsT: 0, runStart: 0, cdStart: 0, lastCd: 0,
-  startedAt: null, result: null, wake: null, audio: null, lastM: null };
+  startedAt: null, result: null, wake: null, audio: null, lastM: null, deviceId: null, cams: [], camLabel: '', front: true, autoStart: true, badSince: 0 };
+S.deviceId = lsGet(KEY_CAM) || null;
+S.autoStart = lsGet(KEY_AUTO) !== '0';
+S.wide = lsGet(KEY_WIDE) !== '0';   // 4:3로 받아 화각을 더 넓게 (아이폰 전면 카메라는 4:3이 16:9보다 더 넓게 담김)
 
 function show(id) {
   document.querySelectorAll('.screen').forEach(e => e.classList.remove('on'));
@@ -379,6 +385,23 @@ function beep(freq, ms, vol) {
   } catch (e) {}
 }
 
+// 알림음: [주파수Hz, 시작ms, 길이ms]
+const SND_RECOG = [[880, 0, 100], [1175, 130, 180]];                                  // 전신 인식됨 (띠링)
+const SND_TICK = [[1000, 0, 190]];                                                     // 3, 2, 1 (띠)
+const SND_GO = [[1568, 0, 600]];                                                       // 시작 (띠이~)
+const SND_END = [[1175, 0, 170], [988, 230, 170], [784, 460, 170], [523, 690, 600]];   // 종료 (띠띠띠 띠~)
+function tones(seq, vol) {
+  if (!S.sound || !S.audio) return;
+  try {
+    const t0 = S.audio.currentTime;
+    for (const [f, at, d] of seq) {
+      const o = S.audio.createOscillator(), g = S.audio.createGain(), s = t0 + at / 1000, e = s + d / 1000;
+      o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(vol || 0.3, s); g.gain.exponentialRampToValueAtTime(0.001, e);
+      o.connect(g); g.connect(S.audio.destination); o.start(s); o.stop(e + 0.02);
+    }
+  } catch (e) {}
+}
 // ---- 화면 꺼짐 방지 ----
 async function wakeOn() { try { if (navigator.wakeLock) S.wake = await navigator.wakeLock.request('screen'); } catch (e) {} }
 function wakeOff() { try { if (S.wake) { S.wake.release(); S.wake = null; } } catch (e) {} }
@@ -434,12 +457,46 @@ async function loadProvider() {
 }
 
 // ---- 카메라 ----
+function camName(label, front) {
+  if (/ultra|초광각/i.test(label)) return '후면 초광각';
+  if (/tele|망원/i.test(label)) return '후면 망원';
+  if (/front|전면/i.test(label) || (front && !/back|rear|후면/i.test(label))) return '전면';
+  if (/back|rear|후면/i.test(label)) return '후면';
+  return label ? label.slice(0, 12) : '카메라';
+}
 async function startCamera() {
   stopCamera();
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { const e = new Error('nomedia'); e.name = 'NoMedia'; throw e; }
-  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: S.facing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+  const plain = { width: { ideal: 1280 }, height: { ideal: 720 } };
+  const bases = S.wide ? [{ width: { ideal: 1280 }, height: { ideal: 960 }, aspectRatio: { ideal: 4 / 3 } }, plain] : [plain];
+  const tries = [];
+  if (S.deviceId) tries.push({ deviceId: { exact: S.deviceId } });
+  tries.push({ facingMode: { ideal: S.facing } });
+  let stream = null, lastErr = null;
+  outer: for (const t of tries) for (const base of bases) {
+    try { stream = await navigator.mediaDevices.getUserMedia({ video: Object.assign({}, base, t), audio: false }); break outer; }
+    catch (e) { lastErr = e; if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) throw e; }
+  }
+  if (!stream) throw lastErr;
   S.stream = stream; vid.srcObject = stream; await vid.play();
-  cvs.style.transform = S.facing === 'user' ? 'scaleX(-1)' : 'none';
+  const track = stream.getVideoTracks()[0], st = (track.getSettings && track.getSettings()) || {};
+  S.camLabel = track.label || '';
+  S.deviceId = st.deviceId || S.deviceId;
+  S.front = st.facingMode ? st.facingMode === 'user' : (/front|전면/i.test(S.camLabel) || (S.facing === 'user' && !/back|rear|후면|ultra|초광각/i.test(S.camLabel)));
+  try { const caps = track.getCapabilities && track.getCapabilities(); if (caps && caps.zoom && isFinite(caps.zoom.min)) await track.applyConstraints({ advanced: [{ zoom: caps.zoom.min }] }); } catch (e) {} // 가장 넓은 화각
+  cvs.style.transform = S.front ? 'scaleX(-1)' : 'none';
+  if (S.deviceId) lsSet(KEY_CAM, S.deviceId);
+  try { S.cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput'); } catch (e) { S.cams = []; }
+  $('#btnFlip').textContent = '카메라: ' + camName(S.camLabel, S.front);
+}
+
+// ---- 음성 안내 / 자동 시작 ----
+function speak(t) { if (!S.sound || !('speechSynthesis' in window)) return; try { const u = new SpeechSynthesisUtterance(t); u.lang = 'ko-KR'; u.rate = 1.05; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch (e) {} }
+function speechPrime() { try { if ('speechSynthesis' in window) { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); } } catch (e) {} }
+function setAuto(on) { S.autoStart = on; lsSet(KEY_AUTO, on ? '1' : '0'); $('#btnAuto').textContent = on ? '자동 시작 켜짐' : '자동 시작 꺼짐'; }
+function cancelCountdown() {
+  S.phase = 'setup'; S.readySince = 0; S.ready = false; S.badSince = 0;
+  $('#cd').classList.remove('on'); $('#bar-run').style.display = 'none'; $('#bar-setup').style.display = 'flex'; $('#guide').classList.add('on');
 }
 function stopCamera() { if (S.stream) { S.stream.getTracks().forEach(t => t.stop()); S.stream = null; } vid.srcObject = null; }
 
@@ -449,7 +506,7 @@ function introError(html) { $('#introErr').innerHTML = html ? '<div class="err">
 
 async function enterCamera() {
   introError('');
-  audioInit();
+  audioInit(); speechPrime();
   show('camera'); S.phase = 'loading';
   $('#bar-setup').style.display = 'flex'; $('#bar-run').style.display = 'none';
   $('#hud-time').style.display = 'none'; $('#hud-run').classList.remove('on'); $('#guide').classList.remove('on'); $('#cd').classList.remove('on');
@@ -492,7 +549,7 @@ function loop() {
   if (lm) drawSkeleton(lm, m);
   S.fpsN++; if (now - S.fpsT >= 1000) { S.fps = S.fpsN; S.fpsN = 0; S.fpsT = now; }
   if (S.phase === 'setup') tickSetup(now, m, aspect);
-  else if (S.phase === 'countdown') tickCountdown(now);
+  else if (S.phase === 'countdown') tickCountdown(now, m);
   else if (S.phase === 'run') tickRun(now, m);
   if (S.debug) updateDebug(m);
 }
@@ -523,19 +580,28 @@ function tickSetup(now, m, aspect) {
   else { good = true; }
   if (good) { if (!S.readySince) S.readySince = now; } else S.readySince = 0;
   S.ready = good && now - S.readySince > 800;
-  setChip(S.ready ? '전신 인식됨. 시작할 수 있어요' : (good ? '인식 중…' : msg), S.ready ? 'ok' : kind);
-  setWarn(portrait ? '폰을 가로로 돌려 주세요 (세로면 플랭크 때 몸이 잘려요)' : '');
+  if (S.ready && !S.chimed) { S.chimed = true; tones(SND_RECOG); }   // 인식되면 알림음
+  if (!good) S.chimed = false;
+  const stable = good ? now - S.readySince : 0;
+  setChip(S.ready ? (S.autoStart ? '전신 인식됨. 이 자세를 유지하면 자동으로 시작해요' : '전신 인식됨. 시작할 수 있어요') : (good ? '인식 중…' : msg), S.ready ? 'ok' : kind);
+  setWarn(portrait ? '가로 화면을 권장해요. 세로면 플랭크 때 몸이 잘릴 수 있어요' : '');
   $('#btnGo').disabled = !S.ready;
+  if (S.autoStart && good && stable > AUTO_HOLD_MS) startCountdown();
 }
 function startCountdown() {
   audioInit();
-  S.phase = 'countdown'; S.cdStart = performance.now(); S.lastCd = -1;
+  S.phase = 'countdown'; S.cdStart = performance.now(); S.lastCd = -1; S.badSince = 0;
   $('#guide').classList.remove('on'); $('#bar-setup').style.display = 'none'; $('#cd').classList.add('on'); setWarn('');
+  $('#bar-run').style.display = 'flex'; $('#btnStop').textContent = '취소';
   setChip('곧 시작해요. 서 있는 자세로 준비하세요');
 }
-function tickCountdown(now) {
+function tickCountdown(now, m) {
   const el = now - S.cdStart, rem = CD_SEC - Math.floor(el / 1000);
-  if (rem !== S.lastCd) { S.lastCd = rem; if (rem > 0) { $('#cd').textContent = rem; beep(660, 120); } }
+  // 카운트다운 중 서 있는 자세에서 벗어나거나 화면을 나가면(0.8초) 취소하고 준비 단계로
+  const okNow = m && m.ok && m.inFrame && m.knee >= 150 && m.tilt >= 60;
+  if (okNow) S.badSince = 0; else if (!S.badSince) S.badSince = now;
+  if (S.badSince && now - S.badSince > 800 && el < CD_SEC * 1000 - 300) { cancelCountdown(); return; }
+  if (rem !== S.lastCd) { S.lastCd = rem; if (rem > 0) { $('#cd').textContent = rem; tones(SND_TICK); } }   // 띠, 띠, 띠
   if (el >= CD_SEC * 1000) startRun(now);
 }
 
@@ -546,7 +612,7 @@ function startRun(now) {
   $('#cd').classList.remove('on'); $('#bar-run').style.display = 'flex';
   $('#hud-time').style.display = 'block'; $('#hud-run').classList.add('on');
   $('#cnt').textContent = '0'; $('#timer').textContent = String(TEST_SEC);
-  setChip('측정 중'); beep(990, 300);
+  setChip('측정 중'); tones(SND_GO); $('#btnStop').textContent = '중단';
 }
 function tickRun(now, m) {
   const el = now - S.runStart, left = Math.max(0, TEST_SEC * 1000 - el);
@@ -562,7 +628,7 @@ function tickRun(now, m) {
 function finish(completed) {
   if (S.phase !== 'run') return;
   const count = S.counter.count, invalid = S.counter.invalid;
-  exitCamera(); beep(440, 500, 0.2);
+  exitCamera(); tones(SND_END); setTimeout(() => speak('끝. ' + count + '회'), 1500);
   S.result = { autoCount: count, finalCount: count, invalid, completed, startedAt: S.startedAt, source: 'camera', condition: lsGet(KEY_COND) || 'before' };
   renderResult(); show('result');
 }
@@ -645,7 +711,7 @@ function buildDebug() {
 function updateDebug(m) {
   const el = $('#dbgLive'); if (!el) return;
   const sm = S.counter.smoothed;
-  el.textContent = 'v' + APP_VER + ' ' + (S.modelInfo || '') + ' | fps ' + S.fps + ' | 상태 ' + S.counter.state + ' | 횟수 ' + S.counter.count + ' | 무효 ' + S.counter.invalid + '\n' +
+  el.textContent = 'v' + APP_VER + ' ' + (S.modelInfo || '') + ' | ' + (S.camLabel || '') + ' ' + vid.videoWidth + 'x' + vid.videoHeight + ' | fps ' + S.fps + ' | 상태 ' + S.counter.state + ' | 횟수 ' + S.counter.count + ' | 무효 ' + S.counter.invalid + '\n' +
     (m.ok ? '쪽 ' + m.side + ' | 무릎 ' + m.knee.toFixed(0) + '° | 기울기 ' + m.tilt.toFixed(0) + '°' + (sm ? ' (평활 ' + sm.knee.toFixed(0) + '/' + sm.tilt.toFixed(0) + ')' : '') : '인식 안 됨(' + m.reason + ')');
   el.style.whiteSpace = 'pre';
 }
@@ -656,8 +722,20 @@ $('#btnHist').onclick = () => { renderHistory(); show('history'); };
 $('#btnManual').onclick = () => { $('#mCond').value = lsGet(KEY_COND) || 'before'; $('#mCount').value = ''; show('manual'); };
 $('#btnBack').onclick = () => { exitCamera(); show('intro'); };
 $('#btnGo').onclick = startCountdown;
-$('#btnStop').onclick = () => finish(false);
-$('#btnFlip').onclick = async () => { S.facing = S.facing === 'user' ? 'environment' : 'user'; try { await startCamera(); S.readySince = 0; } catch (e) { leaveWithError(camErrorText(e)); } };
+$('#btnStop').onclick = () => { if (S.phase === 'countdown') { setAuto(false); cancelCountdown(); } else finish(false); };
+$('#btnAuto').onclick = () => setAuto(!S.autoStart);
+setAuto(S.autoStart);
+function setWide(on) { S.wide = on; lsSet(KEY_WIDE, on ? '1' : '0'); $('#btnWide').textContent = on ? '화각: 넓게' : '화각: 기본'; }
+setWide(S.wide);
+$('#btnWide').onclick = async () => { setWide(!S.wide); try { await startCamera(); S.readySince = 0; } catch (e) { leaveWithError(camErrorText(e)); } };
+$('#btnFlip').onclick = async () => {
+  try {
+    const cams = S.cams || [];
+    if (cams.length > 1) { const i = cams.findIndex(c => c.deviceId === S.deviceId); S.deviceId = cams[(i + 1) % cams.length].deviceId; }
+    else { S.facing = S.facing === 'user' ? 'environment' : 'user'; S.deviceId = null; }
+    await startCamera(); S.readySince = 0;
+  } catch (e) { leaveWithError(camErrorText(e)); }
+};
 $('#btnSound').onclick = () => { S.sound = !S.sound; $('#btnSound').textContent = S.sound ? '소리 켜짐' : '소리 꺼짐'; };
 $('#btnDbg').onclick = () => { S.debug = !S.debug; $('#diagbox').classList.toggle('on', S.debug); };
 $('#diagbox').addEventListener('change', (e) => {
