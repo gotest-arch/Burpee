@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14202b">
+<title>버피 1분 체력 테스트</title>
+<style>
+:root{--bg:#eef1f3;--ink:#14202b;--muted:#5d6b77;--accent:#cf3010;--teal:#0e6f7a;--card:#fff;--line:#d9e0e5;--ok:#1f9d55;--warn:#e08a00}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif;-webkit-text-size-adjust:100%}
+button{font:inherit;color:inherit}
+.screen{display:none;min-height:100%;padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));max-width:560px;margin:0 auto}
+.screen.on{display:block}
+h1{font-size:26px;line-height:1.25;margin:8px 0 6px;letter-spacing:-.02em}
+h2{font-size:18px;margin:22px 0 8px}
+p{margin:6px 0;line-height:1.55}
+.sub{color:var(--muted);font-size:15px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:12px 0}
+.btn{display:block;width:100%;border:0;border-radius:14px;padding:16px;font-size:18px;font-weight:700;background:var(--accent);color:#fff;cursor:pointer}
+.btn.sec{background:#fff;color:var(--ink);border:1px solid var(--line);font-weight:600}
+.btn.teal{background:var(--teal)}
+.btn:disabled{opacity:.4}
+.row{display:flex;gap:10px}
+.row>*{flex:1}
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:8px 0}
+.step{text-align:center;font-size:12.5px;line-height:1.35}
+.step svg{width:100%;height:auto;background:#fff;border:1px solid var(--line);border-radius:10px}
+.notice{font-size:13.5px;color:var(--muted);line-height:1.5}
+.notice b{color:var(--ink)}
+.tag{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;background:#e3eef0;color:var(--teal);margin-left:6px}
+.tag.x{background:#f3e3df;color:var(--accent)}
+/* camera */
+#s-camera{position:fixed;inset:0;max-width:none;padding:0;background:#000;color:#fff;z-index:5}
+#s-camera.on{display:block}
+#view{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+#vid{position:fixed;left:-9999px;top:0;width:2px;height:2px}
+.hud{position:absolute;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:max(10px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 0 max(12px,env(safe-area-inset-left));pointer-events:none}
+.chip{pointer-events:none;background:rgba(0,0,0,.62);border-radius:12px;padding:8px 12px;font-size:15px;line-height:1.35;max-width:62%}
+.chip.ok{background:rgba(31,157,85,.88)}
+.chip.warn{background:rgba(224,138,0,.92)}
+.big{font-variant-numeric:tabular-nums;font-weight:800;text-shadow:0 2px 8px rgba(0,0,0,.6)}
+#timer{font-size:46px;line-height:1}
+#cnt{font-size:96px;line-height:1}
+#hud-run{display:none}
+#hud-run.on{display:flex}
+.hud.mid{top:50%;transform:translateY(-50%);justify-content:flex-start}
+#state{font-size:20px;font-weight:700;background:rgba(0,0,0,.55);border-radius:10px;padding:4px 12px;display:inline-block;margin-top:6px}
+#cd{position:absolute;inset:0;display:none;align-items:center;justify-content:center;font-size:160px;font-weight:800;text-shadow:0 4px 20px rgba(0,0,0,.7);pointer-events:none}
+#cd.on{display:flex}
+.guide{position:absolute;left:50%;top:7%;height:86%;width:min(26%,260px);transform:translateX(-50%);border:3px dashed rgba(255,255,255,.55);border-radius:28px;pointer-events:none;display:none}
+.guide.on{display:block}
+.bar{position:absolute;left:0;right:0;bottom:0;display:flex;gap:8px;padding:10px max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));justify-content:center;flex-wrap:wrap}
+.bar .btn{width:auto;min-width:96px;padding:12px 16px;font-size:16px}
+.bar .btn.sec{background:rgba(0,0,0,.6);color:#fff;border:1px solid rgba(255,255,255,.35)}
+#warn{position:absolute;left:50%;transform:translateX(-50%);top:max(64px,calc(env(safe-area-inset-top) + 56px));background:rgba(224,138,0,.95);padding:8px 14px;border-radius:12px;font-size:15px;display:none;pointer-events:none;text-align:center}
+#warn.on{display:block}
+#dbg{position:absolute;left:10px;bottom:84px;font:12px/1.5 ui-monospace,Menlo,monospace;background:rgba(0,0,0,.72);padding:8px 10px;border-radius:10px;display:none;max-width:70%}
+#dbg.on{display:block}
+#dbg input{width:56px;background:#222;color:#fff;border:1px solid #555;border-radius:6px;padding:2px 4px;font:inherit}
+/* result */
+.num{font-size:84px;font-weight:800;line-height:1;text-align:center;margin:6px 0 2px;font-variant-numeric:tabular-nums}
+.delta{text-align:center;font-size:18px;font-weight:700;margin:2px 0 8px}
+.delta.up{color:var(--ok)}.delta.down{color:var(--accent)}.delta.same{color:var(--muted)}
+.adj{display:flex;align-items:center;justify-content:center;gap:18px;margin:8px 0}
+.adj button{width:52px;height:52px;border-radius:50%;border:1px solid var(--line);background:#fff;font-size:26px;font-weight:700}
+select,input[type=number]{width:100%;padding:12px;border-radius:12px;border:1px solid var(--line);font-size:17px;background:#fff}
+label{display:block;font-size:14px;color:var(--muted);margin:10px 0 4px}
+.hist{list-style:none;padding:0;margin:8px 0}
+.hist li{display:flex;justify-content:space-between;align-items:center;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin:6px 0}
+.hist .n{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums}
+.hist .d{font-size:13px;color:var(--muted)}
+.hist button{border:0;background:none;color:var(--muted);font-size:13px;padding:6px}
+svg.chart{width:100%;height:auto;display:block}
+.err{background:#fff3f0;border:1px solid #f0c4ba;color:#7a2412;border-radius:12px;padding:12px 14px;margin:12px 0;font-size:15px;line-height:1.5}
+</style>
+</head>
+<body>
+
+<!-- 홈 / 안내 -->
+<section id="s-intro" class="screen on">
+  <h1>변형 버피<br>1분 체력 테스트</h1>
+  <p class="sub">카메라가 60초 동안 횟수를 세고, 지난 기록과 비교해 줘요.</p>
+
+  <h2>변형 버피 1회</h2>
+  <div class="steps" id="steps"></div>
+  <p class="notice">푸시업과 점프는 하지 않아요. <b>네 단계를 순서대로</b> 거쳐야 1회로 세요.</p>
+
+  <h2>촬영 방법</h2>
+  <div class="card notice">
+    <b>폰을 가로로</b> 세워 두고, 몸의 <b>옆모습</b>이 보이게 서세요.<br>
+    머리부터 발끝까지 보이도록 <b>2~3m</b> 떨어지세요.<br>
+    같은 요일·시간대, <b>루틴 전</b>에 재면 비교가 정확해요. 주 1회를 권장해요.
+  </div>
+  <div class="card notice">
+    <b>안전</b> 주변 공간을 비우고 미끄러운 바닥은 피하세요. 통증이나 어지러움이 있으면 바로 멈추세요. 체력 측정용이며 진단이 아니에요.<br>
+    <b>개인정보</b> 영상은 이 폰 안에서만 처리되고 저장·전송되지 않아요. 저장되는 것은 횟수 기록뿐이에요.
+  </div>
+
+  <div id="introErr"></div>
+  <button class="btn" id="btnStart">측정 시작</button>
+  <div class="row" style="margin-top:10px">
+    <button class="btn sec" id="btnHist">기록 보기</button>
+    <button class="btn sec" id="btnManual">직접 입력</button>
+  </div>
+</section>
+
+<!-- 카메라 / 측정 -->
+<section id="s-camera" class="screen">
+  <video id="vid" playsinline muted autoplay></video>
+  <canvas id="view"></canvas>
+  <div class="guide" id="guide"></div>
+  <div class="hud">
+    <div class="chip" id="chip">준비 중…</div>
+    <div id="hud-time" class="big" style="display:none"><span id="timer">60</span></div>
+  </div>
+  <div class="hud mid" id="hud-run">
+    <div>
+      <div id="cnt" class="big">0</div>
+      <div id="state">서기</div>
+    </div>
+  </div>
+  <div id="warn"></div>
+  <div id="cd"></div>
+  <div id="dbg"></div>
+  <div class="bar" id="bar-setup">
+    <button class="btn sec" id="btnBack">뒤로</button>
+    <button class="btn sec" id="btnFlip">카메라 전환</button>
+    <button class="btn sec" id="btnSound">소리 켜짐</button>
+    <button class="btn sec" id="btnDbg">진단</button>
+    <button class="btn" id="btnGo" disabled>시작</button>
+  </div>
+  <div class="bar" id="bar-run" style="display:none">
+    <button class="btn sec" id="btnStop">중단</button>
+  </div>
+</section>
+
+<!-- 결과 -->
+<section id="s-result" class="screen">
+  <h1>결과</h1>
+  <p class="sub" id="resSub"></p>
+  <div class="num" id="resNum">0</div>
+  <div class="delta" id="resDelta"></div>
+  <div class="adj">
+    <button id="adjMinus" aria-label="1회 줄이기">−</button>
+    <span class="sub">횟수가 다르면 직접 고치세요</span>
+    <button id="adjPlus" aria-label="1회 늘리기">+</button>
+  </div>
+  <label for="cond">측정 조건</label>
+  <select id="cond">
+    <option value="before">루틴 전</option>
+    <option value="after">루틴 후</option>
+    <option value="rest">휴식일</option>
+  </select>
+  <div id="resNote" class="notice" style="margin-top:8px"></div>
+  <div style="height:12px"></div>
+  <button class="btn" id="btnSave">기록 저장</button>
+  <div class="row" style="margin-top:10px">
+    <button class="btn sec" id="btnRetry">다시 측정</button>
+    <button class="btn sec" id="btnDiscard">저장 안 함</button>
+  </div>
+</section>
+
+<!-- 기록 -->
+<section id="s-history" class="screen">
+  <h1>기록</h1>
+  <div class="card" id="trendCard">
+    <div id="trendText" class="sub"></div>
+    <div id="chart"></div>
+  </div>
+  <ul class="hist" id="histList"></ul>
+  <div class="row" style="margin-top:12px">
+    <button class="btn" id="btnNew">새 테스트</button>
+    <button class="btn sec" id="btnHome">홈</button>
+  </div>
+</section>
+
+<!-- 직접 입력 -->
+<section id="s-manual" class="screen">
+  <h1>횟수 직접 입력</h1>
+  <p class="sub">카메라 없이 직접 센 횟수를 기록해요. 자동 측정 기록과 같은 그래프에 들어가요.</p>
+  <label for="mCount">60초 동안 한 횟수</label>
+  <input id="mCount" type="number" inputmode="numeric" min="0" max="99" placeholder="예: 12">
+  <label for="mCond">측정 조건</label>
+  <select id="mCond">
+    <option value="before">루틴 전</option>
+    <option value="after">루틴 후</option>
+    <option value="rest">휴식일</option>
+  </select>
+  <div style="height:16px"></div>
+  <button class="btn" id="btnMSave">저장</button>
+  <button class="btn sec" id="btnMBack" style="margin-top:10px">뒤로</button>
+</section>
+
+<script>
+// ===== ENGINE START =====
+// 변형 버피 횟수 판정 엔진 (순수 함수, DOM/카메라 의존 없음)
+// 입력: MediaPipe Pose 랜드마크(정규화 좌표 0~1, visibility 포함) → 출력: 지표, 단계, 횟수
+const ENGINE_VERSION = 'rules-0.1';
+
+const DEFAULT_CONFIG = {
+  kneeStandMin: 160,      // 서기: 무릎 각도 이 값 이상
+  kneeSquatMax: 105,      // 쪼그려 앉기: 무릎 각도 이 값 이하
+  tiltPlankMax: 30,       // 플랭크: 어깨-발목 선의 수평 대비 기울기(도) 이 값 이하
+  tiltStandMin: 60,       // 서기: 기울기 이 값 이상 (몸이 세워져 있음)
+  squatMaxMs: 4000,       // 쪼그려 앉기 단계 최대 체류 시간
+  plankMaxMs: 5000,       // 플랭크 단계 최대 시간 (복귀 이동 포함)
+  minPhaseMs: 120,        // 쪼그려 앉기·플랭크가 이 시간 이상 유지돼야 인정 (떨림 방지)
+  minStandMs: 0,          // 플랭크 후 일어서는 동작은 즉시 인정
+  minVisibility: 0.5,     // 랜드마크 신뢰도 하한
+  smoothing: 0.5          // 지표 지수이동평균 계수 (0=이전값 유지, 1=평활 없음)
+};
+
+const LM = {
+  L: { shoulder: 11, hip: 23, knee: 25, ankle: 27 },
+  R: { shoulder: 12, hip: 24, knee: 26, ankle: 28 }
+};
+
+function angleDeg(a, b, c) { // 점 b에서 a-b-c가 이루는 각도
+  const v1x = a.x - b.x, v1y = a.y - b.y, v2x = c.x - b.x, v2y = c.y - b.y;
+  const dot = v1x * v2x + v1y * v2y;
+  const n = Math.hypot(v1x, v1y) * Math.hypot(v2x, v2y);
+  if (n === 0) return NaN;
+  return Math.acos(Math.max(-1, Math.min(1, dot / n))) * 180 / Math.PI;
+}
+
+// 카메라에 더 잘 보이는 쪽(왼/오른)의 랜드마크만 사용
+function pickSide(lm) {
+  const score = (s) => (lm[s.shoulder].visibility + lm[s.hip].visibility + lm[s.knee].visibility + lm[s.ankle].visibility) / 4;
+  return score(LM.L) >= score(LM.R) ? 'L' : 'R';
+}
+
+// aspect = 영상 가로/세로. x를 aspect배 해서 화면 비율 왜곡 없이 각도 계산
+function computeMetrics(lm, aspect, cfg) {
+  cfg = cfg || DEFAULT_CONFIG;
+  if (!lm || lm.length < 29) return { ok: false, reason: 'nolandmarks' };
+  const side = pickSide(lm);
+  const ids = LM[side];
+  const pts = {};
+  for (const k of Object.keys(ids)) {
+    const p = lm[ids[k]];
+    if (!p || p.visibility < cfg.minVisibility) return { ok: false, reason: 'lowvis', side };
+    pts[k] = { x: p.x * aspect, y: p.y, vis: p.visibility, rx: p.x, ry: p.y };
+  }
+  const knee = angleDeg(pts.hip, pts.knee, pts.ankle);
+  const dx = Math.abs(pts.ankle.x - pts.shoulder.x);
+  const dy = Math.abs(pts.ankle.y - pts.shoulder.y);
+  const tilt = Math.atan2(dy, dx) * 180 / Math.PI; // 0=수평, 90=수직
+  const inFrame = Object.values(pts).every(p => p.rx > 0.01 && p.rx < 0.99 && p.ry > 0.01 && p.ry < 0.99);
+  return { ok: true, side, knee, tilt, inFrame };
+}
+
+const STATES = ['STAND', 'SQUAT', 'PLANK'];
+
+function createCounter(userCfg) {
+  const cfg = Object.assign({}, DEFAULT_CONFIG, userCfg || {});
+  let state = 'STAND';
+  let stateSince = 0;       // 현재 단계 진입 시각(ms)
+  let candidate = null;     // 전이 후보 {to, since}
+  let count = 0;
+  let invalid = 0;          // 무효 처리된 시도 수
+  let sm = null;            // 평활된 지표
+  let started = false;
+
+  function smooth(m) {
+    if (!sm) { sm = { knee: m.knee, tilt: m.tilt }; return sm; }
+    const a = cfg.smoothing;
+    sm = { knee: sm.knee * (1 - a) + m.knee * a, tilt: sm.tilt * (1 - a) + m.tilt * a };
+    return sm;
+  }
+
+  function classify(s) {
+    // 각 지표가 어느 자세에 해당하는지 (애매하면 null)
+    if (s.knee >= cfg.kneeStandMin && s.tilt >= cfg.tiltStandMin) return 'STAND';
+    if (s.tilt <= cfg.tiltPlankMax) return 'PLANK';
+    if (s.knee <= cfg.kneeSquatMax) return 'SQUAT';
+    return null;
+  }
+
+  function goto(next, t) { state = next; stateSince = t; candidate = null; }
+
+  // t: 밀리초 시각, m: computeMetrics 결과. 반환: 이벤트 배열
+  function update(t, m) {
+    const events = [];
+    if (!started) { started = true; stateSince = t; }
+    if (!m || !m.ok) return events; // 인식 실패 프레임은 건너뜀 (타임아웃은 계속 진행)
+    const s = smooth(m);
+    const seen = classify(s);
+
+    // 타임아웃: 한 단계에 너무 오래 머물면 이번 시도는 무효
+    if (state === 'SQUAT' && t - stateSince > cfg.squatMaxMs) { invalid++; events.push({ type: 'invalid', t, reason: 'squat-timeout' }); goto('STAND', t); return events; }
+    if (state === 'PLANK' && t - stateSince > cfg.plankMaxMs) { invalid++; events.push({ type: 'invalid', t, reason: 'plank-timeout' }); goto('STAND', t); return events; }
+
+    // 허용 전이: STAND→SQUAT, SQUAT→PLANK, PLANK→STAND(횟수+1)
+    // 플랭크에서 복귀하는 중 쪼그려 앉기는 허용(상태 유지), 서기 도달 시 완료
+    let want = null;
+    if (state === 'STAND' && seen === 'SQUAT') want = 'SQUAT';
+    else if (state === 'SQUAT' && seen === 'PLANK') want = 'PLANK';
+    else if (state === 'SQUAT' && seen === 'STAND') want = 'STAND'; // 중간에 일어섬 → 시도 무효
+    else if (state === 'PLANK' && seen === 'STAND') want = 'STAND';
+
+    if (want) {
+      if (!candidate || candidate.to !== want) candidate = { to: want, since: t };
+      // 플랭크에서 일어서는 순간은 즉시 인정(빠른 연속 동작은 서 있는 시간이 거의 없음)
+      const need = (state === 'PLANK' && want === 'STAND') ? cfg.minStandMs : cfg.minPhaseMs;
+      if (t - candidate.since >= need) {
+        const prev = state;
+        if (prev === 'PLANK' && want === 'STAND') {
+          count++;
+          events.push({ type: 'rep', t, count });
+        } else if (prev === 'SQUAT' && want === 'STAND') {
+          invalid++;
+          events.push({ type: 'invalid', t, reason: 'half-rep' });
+        } else {
+          events.push({ type: 'phase', t, from: prev, to: want });
+        }
+        goto(want, t);
+      }
+    } else {
+      candidate = null;
+    }
+    return events;
+  }
+
+  return {
+    update,
+    get state() { return state; },
+    get count() { return count; },
+    get invalid() { return invalid; },
+    get smoothed() { return sm; },
+    reset() { state = 'STAND'; stateSince = 0; candidate = null; count = 0; invalid = 0; sm = null; started = false; },
+    config: cfg
+  };
+}
+// ===== ENGINE END =====
+
+if (typeof module !== 'undefined') module.exports = { ENGINE_VERSION, DEFAULT_CONFIG, computeMetrics, createCounter, angleDeg, pickSide };
+
+
+// ===================== 앱 =====================
+const MP_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.0';
+const MP_MODEL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task';
+const TEST_SEC = 60, CD_SEC = 5, KEY_REC = 'burpeeTest.v1', KEY_CFG = 'burpeeTest.cfg', KEY_COND = 'burpeeTest.cond';
+const COND = { before: '루틴 전', after: '루틴 후', rest: '휴식일' };
+const CONN = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28],[27,29],[29,31],[28,30],[30,32]];
+const $ = (s) => document.querySelector(s);
+const vid = $('#vid'), cvs = $('#view'), ctx = cvs.getContext('2d');
+
+// ---- 저장소 (localStorage가 막혀 있으면 메모리만 사용) ----
+const mem = {};
+function lsGet(k) { try { const v = localStorage.getItem(k); return v === null ? (mem[k] ?? null) : v; } catch (e) { return mem[k] ?? null; } }
+function lsSet(k, v) { mem[k] = v; try { localStorage.setItem(k, v); } catch (e) {} }
+function loadRecords() { try { const a = JSON.parse(lsGet(KEY_REC) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+function saveRecords(a) { lsSet(KEY_REC, JSON.stringify(a)); }
+function loadCfg() { try { return JSON.parse(lsGet(KEY_CFG) || '{}') || {}; } catch (e) { return {}; } }
+
+// ---- 상태 ----
+const S = { facing: 'user', stream: null, provider: null, counter: null, phase: 'idle', loop: false, lastTs: 0,
+  readySince: 0, ready: false, sound: true, debug: false, fps: 0, fpsN: 0, fpsT: 0, runStart: 0, cdStart: 0, lastCd: 0,
+  startedAt: null, result: null, wake: null, audio: null, lastM: null };
+
+function show(id) {
+  document.querySelectorAll('.screen').forEach(e => e.classList.remove('on'));
+  $('#s-' + id).classList.add('on');
+  window.scrollTo(0, 0);
+}
+
+// ---- 소리 ----
+function audioInit() { try { if (!S.audio) S.audio = new (window.AudioContext || window.webkitAudioContext)(); if (S.audio.state === 'suspended') S.audio.resume(); } catch (e) {} }
+function beep(freq, ms, vol) {
+  if (!S.sound || !S.audio) return;
+  try {
+    const o = S.audio.createOscillator(), g = S.audio.createGain();
+    o.frequency.value = freq; o.type = 'sine'; g.gain.value = vol || 0.15;
+    o.connect(g); g.connect(S.audio.destination); o.start(); o.stop(S.audio.currentTime + ms / 1000);
+  } catch (e) {}
+}
+
+// ---- 화면 꺼짐 방지 ----
+async function wakeOn() { try { if (navigator.wakeLock) S.wake = await navigator.wakeLock.request('screen'); } catch (e) {} }
+function wakeOff() { try { if (S.wake) { S.wake.release(); S.wake = null; } } catch (e) {} }
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && S.loop) wakeOn();
+  if (document.visibilityState === 'hidden' && S.phase === 'run') finish(false); // 백그라운드로 가면 미완료로 종료
+});
+
+// ---- 안내 화면의 동작 그림 ----
+(function drawSteps() {
+  const P = {
+    stand: { s: [.50,.25], h: [.50,.50], k: [.50,.70], a: [.50,.90] },
+    squat: { s: [.55,.58], h: [.46,.78], k: [.57,.72], a: [.50,.90], hand: [.62,.92] },
+    plank: { s: [.32,.70], h: [.52,.76], k: [.67,.80], a: [.82,.85], hand: [.34,.92] }
+  };
+  const items = [['stand', '① 서기'], ['squat', '② 쪼그려 앉아 손을 바닥에'], ['plank', '③ 발을 뒤로 보내 플랭크'], ['stand', '④ 앞으로 스텝, 일어서기']];
+  const X = (x) => ((x - 0.12) / 0.8) * 100, Y = (y) => y * 100;
+  $('#steps').innerHTML = items.map(([k, label]) => {
+    const p = P[k];
+    let dx = p.s[0] - p.h[0], dy = p.s[1] - p.h[1]; const n = Math.hypot(dx, dy) || 1;
+    const head = [p.s[0] + dx / n * 0.09, p.s[1] + dy / n * 0.09];
+    const pts = ['s', 'h', 'k', 'a'].map(i => X(p[i][0]).toFixed(1) + ',' + Y(p[i][1]).toFixed(1)).join(' ');
+    const arm = p.hand ? '<line x1="' + X(p.s[0]).toFixed(1) + '" y1="' + Y(p.s[1]).toFixed(1) + '" x2="' + X(p.hand[0]).toFixed(1) + '" y2="' + Y(p.hand[1]).toFixed(1) + '" stroke="#0e6f7a" stroke-width="5" stroke-linecap="round"/>' : '';
+    return '<div class="step"><svg viewBox="0 0 100 100" aria-hidden="true"><line x1="4" y1="93" x2="96" y2="93" stroke="#cfd8dd" stroke-width="2"/>' + arm +
+      '<polyline points="' + pts + '" fill="none" stroke="#14202b" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<circle cx="' + X(head[0]).toFixed(1) + '" cy="' + Y(head[1]).toFixed(1) + '" r="7" fill="#14202b"/></svg>' + label + '</div>';
+  }).join('');
+})();
+
+// ---- 자세 인식 모델 ----
+async function loadProvider() {
+  if (window.__poseProviderOverride) return window.__poseProviderOverride; // 테스트용 주입
+  const mod = await import(MP_BASE + '/vision_bundle.mjs');
+  const fileset = await mod.FilesetResolver.forVisionTasks(MP_BASE + '/wasm');
+  let lmk;
+  for (const delegate of ['GPU', 'CPU']) {
+    try {
+      lmk = await mod.PoseLandmarker.createFromOptions(fileset, {
+        baseOptions: { modelAssetPath: MP_MODEL, delegate }, runningMode: 'VIDEO', numPoses: 1,
+        minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.5
+      });
+      break;
+    } catch (e) { if (delegate === 'CPU') throw e; }
+  }
+  return { detect(video, ts) { const r = lmk.detectForVideo(video, ts); return (r && r.landmarks && r.landmarks[0]) || null; } };
+}
+
+// ---- 카메라 ----
+async function startCamera() {
+  stopCamera();
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { const e = new Error('nomedia'); e.name = 'NoMedia'; throw e; }
+  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: S.facing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+  S.stream = stream; vid.srcObject = stream; await vid.play();
+  cvs.style.transform = S.facing === 'user' ? 'scaleX(-1)' : 'none';
+}
+function stopCamera() { if (S.stream) { S.stream.getTracks().forEach(t => t.stop()); S.stream = null; } vid.srcObject = null; }
+
+function setChip(text, kind) { const c = $('#chip'); c.textContent = text; c.className = 'chip' + (kind ? ' ' + kind : ''); }
+function setWarn(text) { const w = $('#warn'); if (text) { w.textContent = text; w.classList.add('on'); } else w.classList.remove('on'); }
+function introError(html) { $('#introErr').innerHTML = html ? '<div class="err">' + html + '</div>' : ''; }
+
+async function enterCamera() {
+  introError('');
+  audioInit();
+  show('camera'); S.phase = 'loading';
+  $('#bar-setup').style.display = 'flex'; $('#bar-run').style.display = 'none';
+  $('#hud-time').style.display = 'none'; $('#hud-run').classList.remove('on'); $('#guide').classList.remove('on'); $('#cd').classList.remove('on');
+  $('#btnGo').disabled = true; setWarn('');
+  setChip('카메라 연결 중…');
+  try { await startCamera(); }
+  catch (e) { return leaveWithError(camErrorText(e)); }
+  setChip('자세 인식 모델 불러오는 중… (처음에는 몇 초 걸려요)');
+  try { S.provider = S.provider || await loadProvider(); }
+  catch (e) { return leaveWithError('자세 인식 모델을 불러오지 못했어요. 인터넷 연결을 확인하고 다시 시도하세요. 계속 안 되면 <b>직접 입력</b>을 쓸 수 있어요.'); }
+  S.counter = createCounter(loadCfg());
+  S.phase = 'setup'; S.ready = false; S.readySince = 0;
+  $('#guide').classList.add('on');
+  buildDebug();
+  wakeOn();
+  if (!S.loop) { S.loop = true; requestAnimationFrame(loop); }
+}
+function camErrorText(e) {
+  if (e && e.name === 'NoMedia') return '이 주소에서는 카메라를 쓸 수 없어요. <b>HTTPS 주소</b>로 열어야 해요.';
+  if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) return '카메라 권한이 꺼져 있어요. 설정에서 이 사이트의 카메라를 허용한 뒤 다시 시도하세요. 또는 <b>직접 입력</b>을 쓰세요.';
+  if (e && e.name === 'NotFoundError') return '카메라를 찾을 수 없어요. <b>직접 입력</b>을 쓸 수 있어요.';
+  return '카메라를 시작하지 못했어요. 다른 앱이 카메라를 쓰고 있는지 확인하세요.';
+}
+function leaveWithError(html) { exitCamera(); show('intro'); introError(html); }
+function exitCamera() { S.loop = false; S.phase = 'idle'; stopCamera(); wakeOff(); }
+
+// ---- 메인 루프 ----
+function loop() {
+  if (!S.loop) return;
+  requestAnimationFrame(loop);
+  const now = performance.now();
+  if (vid.readyState < 2 || !vid.videoWidth) return;
+  if (cvs.width !== vid.videoWidth || cvs.height !== vid.videoHeight) { cvs.width = vid.videoWidth; cvs.height = vid.videoHeight; }
+  ctx.drawImage(vid, 0, 0, cvs.width, cvs.height);
+  let lm = null;
+  try { const ts = Math.max(Math.round(now), S.lastTs + 1); S.lastTs = ts; lm = S.provider.detect(vid, ts); } catch (e) { lm = null; }
+  const aspect = vid.videoWidth / vid.videoHeight;
+  const m = lm ? computeMetrics(lm, aspect, S.counter.config) : { ok: false, reason: 'none' };
+  S.lastM = m;
+  if (lm) drawSkeleton(lm, m);
+  S.fpsN++; if (now - S.fpsT >= 1000) { S.fps = S.fpsN; S.fpsN = 0; S.fpsT = now; }
+  if (S.phase === 'setup') tickSetup(now, m, aspect);
+  else if (S.phase === 'countdown') tickCountdown(now);
+  else if (S.phase === 'run') tickRun(now, m);
+  if (S.debug) updateDebug(m);
+}
+
+function drawSkeleton(lm, m) {
+  const W = cvs.width, H = cvs.height;
+  ctx.lineCap = 'round'; ctx.lineWidth = Math.max(3, W / 240);
+  ctx.strokeStyle = 'rgba(255,255,255,.5)';
+  for (const [a, b] of CONN) {
+    const p = lm[a], q = lm[b]; if (!p || !q || p.visibility < 0.4 || q.visibility < 0.4) continue;
+    ctx.beginPath(); ctx.moveTo(p.x * W, p.y * H); ctx.lineTo(q.x * W, q.y * H); ctx.stroke();
+  }
+  if (m && m.ok) {
+    const ids = LM[m.side]; ctx.strokeStyle = '#ffb020'; ctx.lineWidth = Math.max(5, W / 150);
+    ctx.beginPath();
+    ['shoulder', 'hip', 'knee', 'ankle'].forEach((k, i) => { const p = lm[ids[k]]; i ? ctx.lineTo(p.x * W, p.y * H) : ctx.moveTo(p.x * W, p.y * H); });
+    ctx.stroke();
+  }
+}
+
+// ---- 준비 단계 ----
+function tickSetup(now, m, aspect) {
+  const portrait = aspect < 1;
+  let msg = '', kind = '', good = false;
+  if (!m.ok) { msg = m.reason === 'lowvis' ? '몸이 잘 안 보여요. 옆으로 서서 전신이 보이게 해 주세요' : '사람이 인식되지 않아요. 화면 안에 서 주세요'; kind = 'warn'; }
+  else if (!m.inFrame) { msg = '머리부터 발끝까지 화면 안에 들어오게 조금 뒤로 물러나 주세요'; kind = 'warn'; }
+  else if (!(m.knee >= 150 && m.tilt >= 60)) { msg = '똑바로 서서 시작 자세를 잡아 주세요'; kind = 'warn'; }
+  else { good = true; }
+  if (good) { if (!S.readySince) S.readySince = now; } else S.readySince = 0;
+  S.ready = good && now - S.readySince > 800;
+  setChip(S.ready ? '전신 인식됨. 시작할 수 있어요' : (good ? '인식 중…' : msg), S.ready ? 'ok' : kind);
+  setWarn(portrait ? '폰을 가로로 돌려 주세요 (세로면 플랭크 때 몸이 잘려요)' : '');
+  $('#btnGo').disabled = !S.ready;
+}
+function startCountdown() {
+  audioInit();
+  S.phase = 'countdown'; S.cdStart = performance.now(); S.lastCd = -1;
+  $('#guide').classList.remove('on'); $('#bar-setup').style.display = 'none'; $('#cd').classList.add('on'); setWarn('');
+  setChip('곧 시작해요. 서 있는 자세로 준비하세요');
+}
+function tickCountdown(now) {
+  const el = now - S.cdStart, rem = CD_SEC - Math.floor(el / 1000);
+  if (rem !== S.lastCd) { S.lastCd = rem; if (rem > 0) { $('#cd').textContent = rem; beep(660, 120); } }
+  if (el >= CD_SEC * 1000) startRun(now);
+}
+
+// ---- 측정 ----
+const STATE_LABEL = { STAND: '서기', SQUAT: '쪼그려 앉기', PLANK: '플랭크' };
+function startRun(now) {
+  S.phase = 'run'; S.runStart = now; S.counter.reset(); S.startedAt = new Date().toISOString();
+  $('#cd').classList.remove('on'); $('#bar-run').style.display = 'flex';
+  $('#hud-time').style.display = 'block'; $('#hud-run').classList.add('on');
+  $('#cnt').textContent = '0'; $('#timer').textContent = String(TEST_SEC);
+  setChip('측정 중'); beep(990, 300);
+}
+function tickRun(now, m) {
+  const el = now - S.runStart, left = Math.max(0, TEST_SEC * 1000 - el);
+  $('#timer').textContent = String(Math.ceil(left / 1000));
+  const events = S.counter.update(el, m);
+  for (const ev of events) {
+    if (ev.type === 'rep') { $('#cnt').textContent = String(ev.count); beep(880, 80, 0.2); try { navigator.vibrate && navigator.vibrate(30); } catch (e) {} }
+  }
+  $('#state').textContent = STATE_LABEL[S.counter.state] || '';
+  setWarn(m.ok ? (m.inFrame ? '' : '몸이 화면 밖으로 나갔어요') : '몸이 잘 안 보여요');
+  if (left <= 0) finish(true);
+}
+function finish(completed) {
+  if (S.phase !== 'run') return;
+  const count = S.counter.count, invalid = S.counter.invalid;
+  exitCamera(); beep(440, 500, 0.2);
+  S.result = { autoCount: count, finalCount: count, invalid, completed, startedAt: S.startedAt, source: 'camera', condition: lsGet(KEY_COND) || 'before' };
+  renderResult(); show('result');
+}
+
+// ---- 결과 ----
+function sortedRecords() { return loadRecords().slice().sort((a, b) => (a.startedAt < b.startedAt ? -1 : 1)); }
+function prevRecord(cond) {
+  const done = sortedRecords().filter(r => r.completed);
+  return done.filter(r => r.condition === cond).pop() || done.pop() || null;
+}
+function renderResult() {
+  const r = S.result;
+  $('#resNum').textContent = r.finalCount;
+  $('#resSub').textContent = r.completed ? '60초 측정을 마쳤어요' : '중간에 멈춘 기록이에요';
+  $('#cond').value = r.condition;
+  const prev = prevRecord(r.condition), d = $('#resDelta');
+  if (!r.completed) { d.className = 'delta same'; d.textContent = ''; }
+  else if (!prev) { d.className = 'delta same'; d.textContent = '첫 기록이에요. 앞으로의 기준이 돼요'; }
+  else {
+    const diff = r.finalCount - prev.finalCount, pct = prev.finalCount ? Math.round(diff / prev.finalCount * 100) : 0;
+    d.className = 'delta ' + (diff > 0 ? 'up' : diff < 0 ? 'down' : 'same');
+    d.textContent = diff === 0 ? '지난번과 같아요 (' + prev.finalCount + '회)' : '지난번보다 ' + (diff > 0 ? '+' : '') + diff + '회 (' + (pct > 0 ? '+' : '') + pct + '%)';
+  }
+  const notes = [];
+  if (!r.completed) notes.push('중간에 멈춘 기록은 추세 그래프와 비교에서 제외돼요.');
+  if (r.invalid > 0) notes.push('동작이 끝까지 이어지지 않아 세지 않은 시도가 ' + r.invalid + '번 있었어요.');
+  if (r.completed && prev) notes.push('컨디션에 따라 하루하루는 들쭉날쭉해요. 4주 흐름을 보세요.');
+  $('#resNote').innerHTML = notes.join('<br>');
+}
+function adjust(n) { S.result.finalCount = Math.max(0, Math.min(99, S.result.finalCount + n)); renderResult(); }
+function persistResult() {
+  const r = S.result; if (!r) return;
+  const cond = $('#cond').value; lsSet(KEY_COND, cond);
+  const recs = loadRecords();
+  recs.push({ id: 't' + Date.now().toString(36), testType: 'modified_burpee_60s', source: r.source, startedAt: r.startedAt, durationSec: TEST_SEC,
+    autoCount: r.autoCount, finalCount: r.finalCount, completed: r.completed, condition: cond, engineVersion: r.source === 'camera' ? ENGINE_VERSION : null });
+  saveRecords(recs);
+}
+
+// ---- 기록 / 추세 ----
+function fmtDate(iso) { const d = new Date(iso); return (d.getMonth() + 1) + '월 ' + d.getDate() + '일'; }
+function renderHistory() {
+  const all = sortedRecords(), done = all.filter(r => r.completed);
+  const tt = $('#trendText'), ch = $('#chart');
+  if (done.length === 0) { tt.textContent = '아직 완료한 기록이 없어요.'; ch.innerHTML = ''; }
+  else {
+    const first = done[0], last = done[done.length - 1];
+    tt.innerHTML = done.length === 1 ? '첫 기록 <b>' + first.finalCount + '회</b>. 다음 주에 다시 재 보세요.' :
+      '첫 기록 ' + first.finalCount + '회 → 최근 <b>' + last.finalCount + '회</b> (' + (last.finalCount - first.finalCount >= 0 ? '+' : '') + (last.finalCount - first.finalCount) + '회)';
+    const pts = done.slice(-8), W = 320, H = 140, pl = 28, pr = 14, pt = 16, pb = 26;
+    const vals = pts.map(p => p.finalCount), lo = Math.max(0, Math.min(...vals) - 2), hi = Math.max(...vals) + 2;
+    const x = (i) => pl + (pts.length === 1 ? (W - pl - pr) / 2 : i * (W - pl - pr) / (pts.length - 1));
+    const y = (v) => pt + (hi - v) / (hi - lo || 1) * (H - pt - pb);
+    const line = pts.map((p, i) => x(i).toFixed(1) + ',' + y(p.finalCount).toFixed(1)).join(' ');
+    let svg = '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="최근 ' + pts.length + '회 기록 추세">';
+    svg += '<line x1="' + pl + '" y1="' + y(lo) + '" x2="' + (W - pr) + '" y2="' + y(lo) + '" stroke="#d9e0e5"/>';
+    svg += '<text x="2" y="' + (y(lo) + 4) + '" font-size="10" fill="#5d6b77">' + lo + '</text><text x="2" y="' + (y(hi) + 4) + '" font-size="10" fill="#5d6b77">' + hi + '</text>';
+    if (pts.length > 1) svg += '<polyline points="' + line + '" fill="none" stroke="#0e6f7a" stroke-width="2.5" stroke-linejoin="round"/>';
+    pts.forEach((p, i) => {
+      svg += '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(p.finalCount).toFixed(1) + '" r="4" fill="' + (i === pts.length - 1 ? '#cf3010' : '#0e6f7a') + '"/>';
+      svg += '<text x="' + x(i).toFixed(1) + '" y="' + (y(p.finalCount) - 8).toFixed(1) + '" font-size="11" text-anchor="middle" font-weight="700" fill="#14202b">' + p.finalCount + '</text>';
+      svg += '<text x="' + x(i).toFixed(1) + '" y="' + (H - 8) + '" font-size="9.5" text-anchor="middle" fill="#5d6b77">' + (new Date(p.startedAt).getMonth() + 1) + '/' + new Date(p.startedAt).getDate() + '</text>';
+    });
+    ch.innerHTML = svg + '</svg>';
+  }
+  const list = $('#histList');
+  list.innerHTML = all.slice().reverse().map(r =>
+    '<li><div><span class="n">' + r.finalCount + '회</span>' + (r.completed ? '' : '<span class="tag x">중단</span>') +
+    '<span class="tag">' + (COND[r.condition] || '') + '</span>' + (r.source === 'manual' ? '<span class="tag">직접 입력</span>' : '') +
+    '<div class="d">' + fmtDate(r.startedAt) + (r.autoCount !== null && r.autoCount !== r.finalCount ? ' · 자동 ' + r.autoCount + '회에서 보정' : '') + '</div></div>' +
+    '<button data-del="' + r.id + '">삭제</button></li>').join('') || '<li><span class="d">기록이 없어요.</span></li>';
+}
+
+// ---- 진단(임계값 튜닝) ----
+function buildDebug() {
+  const c = S.counter.config;
+  const f = (k, label) => '<div>' + label + ' <input type="number" data-cfg="' + k + '" value="' + c[k] + '"></div>';
+  $('#dbg').innerHTML = '<div id="dbgLive"></div>' + f('kneeStandMin', '서기 무릎≥') + f('kneeSquatMax', '쪼그림 무릎≤') + f('tiltPlankMax', '플랭크 기울기≤') + f('tiltStandMin', '서기 기울기≥');
+}
+function updateDebug(m) {
+  const el = $('#dbgLive'); if (!el) return;
+  const sm = S.counter.smoothed;
+  el.textContent = 'fps ' + S.fps + ' | 상태 ' + S.counter.state + ' | 횟수 ' + S.counter.count + ' | 무효 ' + S.counter.invalid + '\n' +
+    (m.ok ? '쪽 ' + m.side + ' | 무릎 ' + m.knee.toFixed(0) + '° | 기울기 ' + m.tilt.toFixed(0) + '°' + (sm ? ' (평활 ' + sm.knee.toFixed(0) + '/' + sm.tilt.toFixed(0) + ')' : '') : '인식 안 됨(' + m.reason + ')');
+  el.style.whiteSpace = 'pre';
+}
+
+// ---- 이벤트 ----
+$('#btnStart').onclick = enterCamera;
+$('#btnHist').onclick = () => { renderHistory(); show('history'); };
+$('#btnManual').onclick = () => { $('#mCond').value = lsGet(KEY_COND) || 'before'; $('#mCount').value = ''; show('manual'); };
+$('#btnBack').onclick = () => { exitCamera(); show('intro'); };
+$('#btnGo').onclick = startCountdown;
+$('#btnStop').onclick = () => finish(false);
+$('#btnFlip').onclick = async () => { S.facing = S.facing === 'user' ? 'environment' : 'user'; try { await startCamera(); S.readySince = 0; } catch (e) { leaveWithError(camErrorText(e)); } };
+$('#btnSound').onclick = () => { S.sound = !S.sound; $('#btnSound').textContent = S.sound ? '소리 켜짐' : '소리 꺼짐'; };
+$('#btnDbg').onclick = () => { S.debug = !S.debug; $('#dbg').classList.toggle('on', S.debug); };
+$('#dbg').addEventListener('change', (e) => {
+  const k = e.target.dataset && e.target.dataset.cfg; if (!k) return;
+  const v = parseFloat(e.target.value); if (!isFinite(v)) return;
+  S.counter.config[k] = v; const cfg = loadCfg(); cfg[k] = v; lsSet(KEY_CFG, JSON.stringify(cfg));
+});
+$('#adjMinus').onclick = () => adjust(-1);
+$('#adjPlus').onclick = () => adjust(1);
+$('#cond').onchange = () => { S.result.condition = $('#cond').value; renderResult(); };
+$('#btnSave').onclick = () => { persistResult(); S.result = null; renderHistory(); show('history'); };
+$('#btnDiscard').onclick = () => { S.result = null; show('intro'); };
+$('#btnRetry').onclick = () => { S.result = null; enterCamera(); };
+$('#btnNew').onclick = enterCamera;
+$('#btnHome').onclick = () => show('intro');
+$('#btnMBack').onclick = () => show('intro');
+$('#btnMSave').onclick = () => {
+  const n = parseInt($('#mCount').value, 10); if (!isFinite(n) || n < 0 || n > 99) { $('#mCount').focus(); return; }
+  const cond = $('#mCond').value; lsSet(KEY_COND, cond);
+  const recs = loadRecords();
+  recs.push({ id: 't' + Date.now().toString(36), testType: 'modified_burpee_60s', source: 'manual', startedAt: new Date().toISOString(), durationSec: TEST_SEC,
+    autoCount: null, finalCount: n, completed: true, condition: cond, engineVersion: null });
+  saveRecords(recs); renderHistory(); show('history');
+};
+$('#histList').addEventListener('click', (e) => {
+  const id = e.target && e.target.dataset && e.target.dataset.del; if (!id) return;
+  if (e.target.dataset.armed !== '1') { e.target.dataset.armed = '1'; e.target.textContent = '한 번 더 누르면 삭제'; return; }
+  saveRecords(loadRecords().filter(r => r.id !== id)); renderHistory();
+});
+</script>
+</body>
+</html>
