@@ -55,9 +55,9 @@ p{margin:6px 0;line-height:1.55}
 .bar .btn.sec{background:rgba(0,0,0,.6);color:#fff;border:1px solid rgba(255,255,255,.35)}
 #warn{position:absolute;left:50%;transform:translateX(-50%);top:max(64px,calc(env(safe-area-inset-top) + 56px));background:rgba(224,138,0,.95);padding:8px 14px;border-radius:12px;font-size:15px;display:none;pointer-events:none;text-align:center}
 #warn.on{display:block}
-#dbg{position:absolute;left:10px;bottom:84px;font:12px/1.5 ui-monospace,Menlo,monospace;background:rgba(0,0,0,.72);padding:8px 10px;border-radius:10px;display:none;max-width:70%}
-#dbg.on{display:block}
-#dbg input{width:56px;background:#222;color:#fff;border:1px solid #555;border-radius:6px;padding:2px 4px;font:inherit}
+#diagbox{position:absolute;left:10px;bottom:84px;font:12px/1.5 ui-monospace,Menlo,monospace;background:rgba(0,0,0,.72);padding:8px 10px;border-radius:10px;display:none;max-width:70%}
+#diagbox.on{display:block}
+#diagbox input{width:56px;background:#222;color:#fff;border:1px solid #555;border-radius:6px;padding:2px 4px;font:inherit}
 /* result */
 .num{font-size:84px;font-weight:800;line-height:1;text-align:center;margin:6px 0 2px;font-variant-numeric:tabular-nums}
 .delta{text-align:center;font-size:18px;font-weight:700;margin:2px 0 8px}
@@ -123,7 +123,7 @@ svg.chart{width:100%;height:auto;display:block}
   </div>
   <div id="warn"></div>
   <div id="cd"></div>
-  <div id="dbg"></div>
+  <div id="diagbox"></div>
   <div class="bar" id="bar-setup">
     <button class="btn sec" id="btnBack">뒤로</button>
     <button class="btn sec" id="btnFlip">카메라 전환</button>
@@ -341,7 +341,7 @@ if (typeof module !== 'undefined') module.exports = { ENGINE_VERSION, DEFAULT_CO
 // ===================== 앱 =====================
 const MP_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.0';
 const mpModelUrl = (name, ver) => 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_' + name + '/float16/' + ver + '/pose_landmarker_' + name + '.task';
-const APP_VER = '0.3';
+const APP_VER = '0.4';
 const TEST_SEC = 60, CD_SEC = 5, KEY_REC = 'burpeeTest.v1', KEY_CFG = 'burpeeTest.cfg', KEY_COND = 'burpeeTest.cond';
 const COND = { before: '루틴 전', after: '루틴 후', rest: '휴식일' };
 const CONN = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28],[27,29],[29,31],[28,30],[30,32]];
@@ -640,7 +640,7 @@ function renderHistory() {
 function buildDebug() {
   const c = S.counter.config;
   const f = (k, label) => '<div>' + label + ' <input type="number" data-cfg="' + k + '" value="' + c[k] + '"></div>';
-  $('#dbg').innerHTML = '<div id="dbgLive"></div>' + f('kneeStandMin', '서기 무릎≥') + f('kneeSquatMax', '쪼그림 무릎≤') + f('tiltPlankMax', '플랭크 기울기≤') + f('tiltStandMin', '서기 기울기≥');
+  $('#diagbox').innerHTML = '<div id="dbgLive"></div>' + f('kneeStandMin', '서기 무릎≥') + f('kneeSquatMax', '쪼그림 무릎≤') + f('tiltPlankMax', '플랭크 기울기≤') + f('tiltStandMin', '서기 기울기≥');
 }
 function updateDebug(m) {
   const el = $('#dbgLive'); if (!el) return;
@@ -659,8 +659,8 @@ $('#btnGo').onclick = startCountdown;
 $('#btnStop').onclick = () => finish(false);
 $('#btnFlip').onclick = async () => { S.facing = S.facing === 'user' ? 'environment' : 'user'; try { await startCamera(); S.readySince = 0; } catch (e) { leaveWithError(camErrorText(e)); } };
 $('#btnSound').onclick = () => { S.sound = !S.sound; $('#btnSound').textContent = S.sound ? '소리 켜짐' : '소리 꺼짐'; };
-$('#btnDbg').onclick = () => { S.debug = !S.debug; $('#dbg').classList.toggle('on', S.debug); };
-$('#dbg').addEventListener('change', (e) => {
+$('#btnDbg').onclick = () => { S.debug = !S.debug; $('#diagbox').classList.toggle('on', S.debug); };
+$('#diagbox').addEventListener('change', (e) => {
   const k = e.target.dataset && e.target.dataset.cfg; if (!k) return;
   const v = parseFloat(e.target.value); if (!isFinite(v)) return;
   S.counter.config[k] = v; const cfg = loadCfg(); cfg[k] = v; lsSet(KEY_CFG, JSON.stringify(cfg));
