@@ -4,7 +4,7 @@
 
 - 앱: `index.html` (단일 파일, GitHub Pages로 게시)
 - 판정 엔진: `src/engine.js` (카메라와 무관한 순수 함수)
-- 엔진 테스트: `node src/test_engine.js`
+- 엔진 테스트: `node src/test_engine.js` (측면), `node src/test_front.js` (정면)
 
 ## 사용 방법
 1. 폰(사파리)으로 게시 주소를 엽니다. 카메라는 HTTPS 주소에서만 켜집니다.

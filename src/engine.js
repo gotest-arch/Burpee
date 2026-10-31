@@ -1,7 +1,7 @@
 // ===== ENGINE START =====
 // 변형 버피 횟수 판정 엔진 (순수 함수, DOM/카메라 의존 없음)
 // 입력: MediaPipe Pose 랜드마크(정규화 좌표 0~1, visibility 포함) → 출력: 지표, 단계, 횟수
-const ENGINE_VERSION = 'rules-0.1';
+const ENGINE_VERSION = 'rules-0.2';
 
 const DEFAULT_CONFIG = {
   kneeStandMin: 160,      // 서기: 무릎 각도 이 값 이상
@@ -36,7 +36,7 @@ function pickSide(lm) {
 }
 
 // aspect = 영상 가로/세로. x를 aspect배 해서 화면 비율 왜곡 없이 각도 계산
-function computeMetrics(lm, aspect, cfg) {
+function computeSide(lm, aspect, cfg) {
   cfg = cfg || DEFAULT_CONFIG;
   if (!lm || lm.length < 29) return { ok: false, reason: 'nolandmarks' };
   const side = pickSide(lm);
@@ -52,7 +52,48 @@ function computeMetrics(lm, aspect, cfg) {
   const dy = Math.abs(pts.ankle.y - pts.shoulder.y);
   const tilt = Math.atan2(dy, dx) * 180 / Math.PI; // 0=수평, 90=수직
   const inFrame = Object.values(pts).every(p => p.rx > 0.01 && p.rx < 0.99 && p.ry > 0.01 && p.ry < 0.99);
-  return { ok: true, side, knee, tilt, inFrame };
+  return { ok: true, view: 'side', side, knee, tilt, inFrame };
+}
+
+// ---- 정면 촬영: 모델이 주는 3D(월드) 좌표로 각도 계산 (촬영 방향과 무관) ----
+function angle3(a, b, c) {
+  const v1 = [a.x - b.x, a.y - b.y, a.z - b.z], v2 = [c.x - b.x, c.y - b.y, c.z - b.z];
+  const dot = v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2];
+  const n = Math.hypot(v1[0], v1[1], v1[2]) * Math.hypot(v2[0], v2[1], v2[2]);
+  if (!n) return NaN;
+  return Math.acos(Math.max(-1, Math.min(1, dot / n))) * 180 / Math.PI;
+}
+function sideVisible(lm, ids, minVis) { return ['shoulder', 'hip', 'knee', 'ankle'].every(k => lm[ids[k]] && lm[ids[k]].visibility >= minVis); }
+
+// 정면 여부: 어깨 폭 / 몸통 길이 (정면이면 ~0.8, 측면이면 ~0.1)
+function frontness(lm, aspect) {
+  const a = lm[11], b = lm[12], c = lm[23], d = lm[24];
+  if (!a || !b || !c || !d || Math.min(a.visibility, b.visibility, c.visibility, d.visibility) < 0.5) return null;
+  const sep = Math.abs(a.x - b.x) * aspect;
+  const sx = (a.x + b.x) / 2 * aspect, sy = (a.y + b.y) / 2, hx = (c.x + d.x) / 2 * aspect, hy = (c.y + d.y) / 2;
+  const torso = Math.hypot(sx - hx, sy - hy);
+  return torso > 0 ? sep / torso : null;
+}
+
+function computeFront(lm, aspect, cfg) {
+  const w = lm && lm.world;
+  if (!w || w.length < 29) return { ok: false, view: 'front', reason: 'noworld' };
+  const sides = ['L', 'R'].filter(s => sideVisible(lm, LM[s], cfg.minVisibility));
+  if (!sides.length) return { ok: false, view: 'front', reason: 'lowvis' };
+  const knees = sides.map(s => angle3(w[LM[s].hip], w[LM[s].knee], w[LM[s].ankle]));
+  const knee = knees.reduce((p, c) => p + c, 0) / knees.length;
+  const mid = (k) => ({ x: sides.reduce((p, s) => p + w[LM[s][k]].x, 0) / sides.length, y: sides.reduce((p, s) => p + w[LM[s][k]].y, 0) / sides.length, z: sides.reduce((p, s) => p + w[LM[s][k]].z, 0) / sides.length });
+  const sh = mid('shoulder'), an = mid('ankle');
+  // 월드 좌표의 y축을 수직으로 본다 (폰이 대체로 세워져 있다고 가정). 어깨-발목 선이 수평에 가까우면 플랭크.
+  const tilt = Math.atan2(Math.abs(sh.y - an.y), Math.hypot(sh.x - an.x, sh.z - an.z)) * 180 / Math.PI;
+  const inFrame = sides.every(s => Object.keys(LM[s]).every(k => { const p = lm[LM[s][k]]; return p.x > 0.01 && p.x < 0.99 && p.y > 0.01 && p.y < 0.99; }));
+  return { ok: true, view: 'front', side: sides.join(''), knee, tilt, inFrame };
+}
+
+// view: 'side'(기본, 화면 좌표) | 'front'(3D 월드 좌표)
+function computeMetrics(lm, aspect, cfg, view) {
+  cfg = cfg || DEFAULT_CONFIG;
+  return view === 'front' ? computeFront(lm, aspect, cfg) : computeSide(lm, aspect, cfg);
 }
 
 const STATES = ['STAND', 'SQUAT', 'PLANK'];
@@ -139,4 +180,4 @@ function createCounter(userCfg) {
 }
 // ===== ENGINE END =====
 
-if (typeof module !== 'undefined') module.exports = { ENGINE_VERSION, DEFAULT_CONFIG, computeMetrics, createCounter, angleDeg, pickSide };
+if (typeof module !== 'undefined') module.exports = { ENGINE_VERSION, DEFAULT_CONFIG, computeMetrics, createCounter, angleDeg, pickSide, frontness };
